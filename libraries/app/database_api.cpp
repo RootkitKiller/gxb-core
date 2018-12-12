@@ -67,7 +67,10 @@ fc::variants database_api::get_objects(const vector<object_id_type>& ids)const
 
 get_table_rows_result database_api::get_table_rows(string contract, string table, uint64_t start, uint64_t limit) const
 {
-    return my->get_table_rows(contract, table, start, limit);
+    std::string index_type = "1";           //primary
+    //std::string index_type = "2";         //sec
+    //std::string index_type = "3";         //thr
+    return my->get_table_rows(contract, table,index_type, start, limit);
 }
 
 bytes database_api::serialize_contract_call_args(string contract, string method, string json_args) const 

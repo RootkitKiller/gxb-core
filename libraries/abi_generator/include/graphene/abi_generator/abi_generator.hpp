@@ -11,7 +11,7 @@
 #include <graphene/chain/abi_serializer.hpp>
 //#include <graphene/chain/protocol/types.hpp>
 #include <fc/io/json.hpp>
-
+#include <iostream>
 //clashes with something deep in the AST includes in clang 6 and possibly other versions of clang
 #pragma push_macro("N")
 #undef N
@@ -59,6 +59,11 @@ namespace graphene {
        FC_MULTILINE_MACRO_END \
       )
 
+    struct macro_info {
+        std::vector<string> macro_actions; // macro ACTION list
+        bool isfoundABImacro = false;      // is found GRAPHENERA_ABI(.....)
+        std::string source_path;           // source path
+    };
    /**
      * @brief Generates eosio::abi_def struct handling events from ASTConsumer
      */
@@ -75,6 +80,7 @@ namespace graphene {
          clang::ASTContext*     ast_context;
          string                 target_contract;
          vector<string>         target_actions;
+         vector<string>         target_macro_actions;
 
       public:
 
@@ -134,7 +140,7 @@ namespace graphene {
           */
          void handle_tagdecl_definition(TagDecl* tag_decl);
 
-         void set_target_contract(const string& contract, const vector<string>& actions);
+         void set_target_contract(const string& contract, const vector<string>& actions, const vector<string>& macroactions);
 
       private:
          bool inspect_type_methods_for_actions(const Decl* decl);
@@ -228,10 +234,11 @@ namespace graphene {
          string& contract;
          vector<string>& actions;
          const string& abi_context;
+         macro_info &macro_info_param;
 
          find_gxc_abi_macro_action(string& contract, vector<string>& actions, const string& abi_context
-            ): contract(contract),
-            actions(actions), abi_context(abi_context) {
+            , macro_info &macro_info_param): contract(contract),
+            actions(actions), abi_context(abi_context), macro_info_param(macro_info_param) {
          }
 
          struct callback_handler : public PPCallbacks {
@@ -265,8 +272,25 @@ namespace graphene {
 
                auto* id = token.getIdentifierInfo();
                if( id == nullptr ) return;
+               std::string na=id->getName().str();
+               if(na == "ACTION"){
+                   const auto& smg = compiler_instance.getSourceManager();
+                   auto file_name = smg.getFilename(range.getBegin());
+                   if ( !act.abi_context.empty() && !file_name.startswith(act.abi_context) ) {
+                       return;
+                   }
+                   clang::SourceLocation start(range.getBegin());
+                   auto macro_action = string(smg.getCharacterData(start), 20);
+                   regex r(R"(ACTION\s*([a-z1-5]*))");
+                   smatch smatch;
+                   auto res = regex_search(macro_action, smatch, r);
+                   ABI_ASSERT( res );
+                   act.macro_info_param.macro_actions.push_back(smatch[1].str());
+                   act.macro_info_param.source_path = file_name.str();
+                   return ;
+               }
                if( id->getName() != "GRAPHENE_ABI" ) return;
-
+               act.macro_info_param.isfoundABImacro = true;
                const auto& sm = compiler_instance.getSourceManager();
                auto file_name = sm.getFilename(range.getBegin());
                if ( !act.abi_context.empty() && !file_name.startswith(act.abi_context) ) {
@@ -315,12 +339,12 @@ namespace graphene {
       public:
 
          generate_abi_action(bool verbose, bool opt_sfs, string abi_context,
-                             abi_def& output, const string& contract, const vector<string>& actions) {
+                             abi_def& output, const string& contract, const vector<string>& actions, const vector<string>& macro_actions) {
 
             abi_gen.set_output(output);
             abi_gen.set_verbose(verbose);
             abi_gen.set_abi_context(abi_context);
-            abi_gen.set_target_contract(contract, actions);
+            abi_gen.set_target_contract(contract, actions, macro_actions);
 
             if(opt_sfs)
                abi_gen.enable_optimizaton(abi_generator::OPT_SINGLE_FIELD_STRUCT);

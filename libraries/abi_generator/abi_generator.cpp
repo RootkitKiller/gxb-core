@@ -2,9 +2,10 @@
 
 namespace graphene {
 
-void abi_generator::set_target_contract(const string& contract, const vector<string>& actions) {
+void abi_generator::set_target_contract(const string& contract, const vector<string>& actions, const vector<string>& macro_actions) {
   target_contract = contract;
   target_actions  = actions;
+  target_macro_actions = macro_actions;
 }
 
 void abi_generator::enable_optimizaton(abi_generator::optimization o) {
@@ -116,10 +117,13 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
       payable = payable_smatch.size() == 3;
     }
 
+    // Check if current method is listed the ACTION macro
+    bool is_action_from_mlist = rec_decl->getName().str() == target_contract && std::find(target_macro_actions.begin(), target_macro_actions.end(), method_name) != target_macro_actions.end();
+
     // Check if current method is listed the GRAPHENE_ABI macro
     bool is_action_from_macro = rec_decl->getName().str() == target_contract && std::find(target_actions.begin(), target_actions.end(), method_name) != target_actions.end();
     
-    if(!raw_comment_is_action && !is_action_from_macro) {
+    if(!raw_comment_is_action && !is_action_from_macro &&!is_action_from_mlist) {
       return;
     }
 

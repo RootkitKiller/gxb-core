@@ -63,6 +63,7 @@ namespace graphene {
         std::vector<string> macro_actions; // macro ACTION list
         bool isfoundABImacro = false;      // is found GRAPHENERA_ABI(.....)
         std::string source_path;           // source path
+        std::string contract_name;         // contract name
     };
    /**
      * @brief Generates eosio::abi_def struct handling events from ASTConsumer
@@ -80,7 +81,7 @@ namespace graphene {
          clang::ASTContext*     ast_context;
          string                 target_contract;
          vector<string>         target_actions;
-         vector<string>         target_macro_actions;
+         macro_info*            target_macro_info_param_ptr;
 
       public:
 
@@ -94,6 +95,7 @@ namespace graphene {
          , output(nullptr)
          , compiler_instance(nullptr)
          , ast_context(nullptr)
+         , target_macro_info_param_ptr(nullptr)
          {}
 
          ~abi_generator() {}
@@ -140,7 +142,7 @@ namespace graphene {
           */
          void handle_tagdecl_definition(TagDecl* tag_decl);
 
-         void set_target_contract(const string& contract, const vector<string>& actions, const vector<string>& macroactions);
+         void set_target_contract(const string& contract, const vector<string>& actions, macro_info *macro_info_param_ptr);
 
       private:
          bool inspect_type_methods_for_actions(const Decl* decl);
@@ -339,12 +341,12 @@ namespace graphene {
       public:
 
          generate_abi_action(bool verbose, bool opt_sfs, string abi_context,
-                             abi_def& output, const string& contract, const vector<string>& actions, const vector<string>& macro_actions) {
+                             abi_def& output, const string& contract, const vector<string>& actions, macro_info &macro_info_param) {
 
             abi_gen.set_output(output);
             abi_gen.set_verbose(verbose);
             abi_gen.set_abi_context(abi_context);
-            abi_gen.set_target_contract(contract, actions, macro_actions);
+            abi_gen.set_target_contract(contract, actions, &macro_info_param);
 
             if(opt_sfs)
                abi_gen.enable_optimizaton(abi_generator::OPT_SINGLE_FIELD_STRUCT);

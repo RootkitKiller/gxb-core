@@ -2,10 +2,10 @@
 
 namespace graphene {
 
-void abi_generator::set_target_contract(const string& contract, const vector<string>& actions, const vector<string>& macro_actions) {
+void abi_generator::set_target_contract(const string& contract, const vector<string>& actions, macro_info *macro_info_param_ptr) {
   target_contract = contract;
   target_actions  = actions;
-  target_macro_actions = macro_actions;
+  target_macro_info_param_ptr = macro_info_param_ptr;
 }
 
 void abi_generator::enable_optimizaton(abi_generator::optimization o) {
@@ -116,9 +116,9 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
       raw_comment_is_action = payable_smatch.size() == 3;
       payable = payable_smatch.size() == 3;
     }
-
+    target_macro_info_param_ptr->contract_name = rec_decl->getName().str();
     // Check if current method is listed the ACTION macro
-    bool is_action_from_mlist = rec_decl->getName().str() == target_contract && std::find(target_macro_actions.begin(), target_macro_actions.end(), method_name) != target_macro_actions.end();
+    bool is_action_from_mlist = rec_decl->getName().str() == target_contract && std::find(target_macro_info_param_ptr->macro_actions.begin(), target_macro_info_param_ptr->macro_actions.end(), method_name) != target_macro_info_param_ptr->macro_actions.end();
 
     // Check if current method is listed the GRAPHENE_ABI macro
     bool is_action_from_macro = rec_decl->getName().str() == target_contract && std::find(target_actions.begin(), target_actions.end(), method_name) != target_actions.end();

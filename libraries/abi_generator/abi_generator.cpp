@@ -206,6 +206,28 @@ void abi_generator::handle_decl(const Decl* decl) { try {
   // The current Decl doesn't have actions
   const RawComment* raw_comment = ast_context->getRawCommentForDeclNoCache(decl);
   if(raw_comment == nullptr) {
+
+    for(auto i : target_macro_info_param_ptr->macro_tables){
+      const auto* action_decl = dyn_cast<CXXRecordDecl>(decl);
+      ABI_ASSERT(action_decl != nullptr);
+      auto qt = action_decl->getTypeForDecl()->getCanonicalTypeInternal();
+      std::string type_name = "mytable";
+      const auto* s = find_struct(type_name);
+      if(!s){
+          add_struct(qt, type_name, 0);
+          s = find_struct(type_name);
+          ABI_ASSERT(s, "Unable to find type ${type}", ("type",type_name));
+      }
+      table_def table;
+      table.name = boost::algorithm::to_lower_copy(boost::erase_all_copy(type_name, "_"));
+      table.type = type_name;
+      table.index_type = "i64";
+      guess_key_names(table, *s);
+      const auto* ta = find_table(table.name);
+      if(!ta) {
+          output->tables.push_back(table);
+      }
+    }
     return;
   }
 
@@ -709,21 +731,27 @@ string abi_generator::add_struct(const clang::QualType& sqt, string full_name, s
     return name;
   }
 
-  auto bases = get_struct_bases(qt);
-  auto bitr = bases.begin();
-  int total_bases = 0;
-
   string base_name;
-  while( bitr != bases.end() ) {
-    auto base_qt = bitr->getType();
-    const auto* record_type = base_qt->getAs<clang::RecordType>();
-    if( record_type && is_struct(base_qt) && !record_type->getDecl()->field_empty() ) {
-      ABI_ASSERT(total_bases == 0, "Multiple inheritance not supported - ${type}", ("type",full_name));
-      base_name = add_type(base_qt, recursion_depth);
-      ++total_bases;
+
+  //if( full_name.find( "mytable" ) != std::string::npos ){
+    //base_name = "";
+  //}else {
+    auto bases = get_struct_bases(qt);
+    auto bitr = bases.begin();
+    int total_bases = 0;
+
+
+    while (bitr != bases.end()) {
+      auto base_qt = bitr->getType();
+      const auto *record_type = base_qt->getAs<clang::RecordType>();
+      if (record_type && is_struct(base_qt) && !record_type->getDecl()->field_empty()) {
+        ABI_ASSERT(total_bases == 0, "Multiple inheritance not supported - ${type}", ("type", full_name));
+        base_name = add_type(base_qt, recursion_depth);
+        ++total_bases;
+      }
+      ++bitr;
     }
-    ++bitr;
-  }
+  //}
 
   struct_def abi_struct;
   for (const clang::FieldDecl* field : get_struct_fields(qt) ) {

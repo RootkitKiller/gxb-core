@@ -61,6 +61,7 @@ namespace graphene {
 
     struct macro_info {
         std::vector<string> macro_actions; // macro ACTION list
+        std::vector<string> macro_tables;  // macro TABLE list
         bool isfoundABImacro = false;      // is found GRAPHENERA_ABI(.....)
         std::string source_path;           // source path
         std::string contract_name;         // contract name
@@ -274,30 +275,34 @@ namespace graphene {
 
                auto* id = token.getIdentifierInfo();
                if( id == nullptr ) return;
-               std::string na=id->getName().str();
-               if(na == "ACTION"){
-                   const auto& smg = compiler_instance.getSourceManager();
-                   auto file_name = smg.getFilename(range.getBegin());
-                   if ( !act.abi_context.empty() && !file_name.startswith(act.abi_context) ) {
-                       return;
-                   }
-                   clang::SourceLocation start(range.getBegin());
-                   auto macro_action = string(smg.getCharacterData(start), 20);
-                   regex r(R"(ACTION\s*([a-z1-5]*))");
-                   smatch smatch;
-                   auto res = regex_search(macro_action, smatch, r);
-                   ABI_ASSERT( res );
-                   act.macro_info_param.macro_actions.push_back(smatch[1].str());
-                   act.macro_info_param.source_path = file_name.str();
-                   return ;
-               }
-               if( id->getName() != "GRAPHENE_ABI" ) return;
-               act.macro_info_param.isfoundABImacro = true;
                const auto& sm = compiler_instance.getSourceManager();
                auto file_name = sm.getFilename(range.getBegin());
                if ( !act.abi_context.empty() && !file_name.startswith(act.abi_context) ) {
                   return;
                }
+               act.macro_info_param.source_path = file_name.str();
+               clang::SourceLocation start(range.getBegin());
+               std::string na=id->getName().str();
+               if(na == "ACTION"){
+                   auto macro_action = string(sm.getCharacterData(start), 20);
+                   regex r(R"(ACTION\s*([a-z1-5]*))");
+                   smatch smatch;
+                   auto res = regex_search(macro_action, smatch, r);
+                   ABI_ASSERT( res );
+                   act.macro_info_param.macro_actions.push_back(smatch[1].str());
+                   return ;
+               }
+               else if(na == "TABLE"){
+                   auto macro_table = string(sm.getCharacterData(start), 20);
+                   regex r(R"(TABLE\s*([a-z0-9]*)\s)");
+                   smatch smatch;
+                   auto res = regex_search(macro_table, smatch, r);
+                   ABI_ASSERT( res );
+                   act.macro_info_param.macro_tables.push_back(smatch[1].str());
+                   return ;
+               }
+               if( id->getName() != "GRAPHENE_ABI" ) return;
+               act.macro_info_param.isfoundABImacro = true;
 
                ABI_ASSERT( md.getMacroInfo()->getNumArgs() == 2 );
 

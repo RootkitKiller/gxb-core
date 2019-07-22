@@ -292,6 +292,24 @@ namespace graphene {
                    act.macro_info_param.macro_actions.push_back(smatch[1].str());
                    return ;
                }
+               else if(na == "PAYABLE"){
+                   auto macro_table = string(sm.getCharacterData(start), 20);
+                   regex r(R"(PAYABLE\s*([a-zA-Z0-9]*)\s)");
+                   smatch smatch;
+                   auto res = regex_search(macro_table, smatch, r);
+                   ABI_ASSERT( res );
+                   act.contract = remove_namespace(smatch[1].str());
+                   return ;
+               }
+               else if(na == "CONTRACT"){
+                   auto macro_table = string(sm.getCharacterData(start), 20);
+                   regex r(R"(CONTRACT\s*([a-zA-Z0-9]*)\s)");
+                   smatch smatch;
+                   auto res = regex_search(macro_table, smatch, r);
+                   ABI_ASSERT( res );
+                   act.contract = remove_namespace(smatch[1].str());
+                   return ;
+               }
                else if(na == "TABLE"){
                    auto macro_table = string(sm.getCharacterData(start), 20);
                    regex r(R"(TABLE\s*([a-z0-9]*)\s)");

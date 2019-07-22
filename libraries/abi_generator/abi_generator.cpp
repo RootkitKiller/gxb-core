@@ -116,8 +116,8 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
       raw_comment_is_action = payable_smatch.size() == 3;
       payable = payable_smatch.size() == 3;
     }
-    target_macro_info_param_ptr->contract_name = rec_decl->getName().str();
     // Check if current method is listed the ACTION macro
+
     bool is_action_from_mlist = rec_decl->getName().str() == target_contract && std::find(target_macro_info_param_ptr->macro_actions.begin(), target_macro_info_param_ptr->macro_actions.end(), method_name) != target_macro_info_param_ptr->macro_actions.end();
 
     // Check if current method is listed the GRAPHENE_ABI macro
@@ -128,7 +128,7 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
     }
 
     ABI_ASSERT(find_struct(method_name) == nullptr, "action already exists ${method_name}", ("method_name",method_name));
-
+    target_macro_info_param_ptr->contract_name = rec_decl->getName().str();
     struct_def abi_struct;
     for(const auto* p : method->parameters() ) {
       clang::QualType qt = p->getOriginalType().getNonReferenceType();
@@ -192,10 +192,47 @@ void abi_generator::handle_decl(const Decl* decl) { try {
   ABI_ASSERT(output != nullptr);
   ABI_ASSERT(ast_context != nullptr);
 
+  SourceManager &sm = ast_context->getSourceManager();
+  auto loc = decl->getLocation();
+  auto pair = sm.getDecomposedLoc(loc);
+  auto code_buff = sm.getBuffer(pair.first)->getBuffer().str();
+  std::string current_code;
+  auto table_decl = dyn_cast<CXXRecordDecl>(decl);
+  bool isClass = false;
+  if(code_buff.size()>pair.second && table_decl != nullptr) {
+      current_code = code_buff.substr(pair.second, code_buff.size()-pair.second);
+      auto qt = table_decl->getTypeForDecl()->getCanonicalTypeInternal();
+      if(qt.getAsString().find("class")!=std::string::npos && qt.getAsString().find("graphene")!=std::string::npos){
+          isClass = true;
+      }
+      if(qt.getAsString().find("struct")!=std::string::npos && qt.getAsString().find("helloworld")!=std::string::npos) {
+          regex r(R"(([a-z0-9]*)\s)");
+          smatch smatch;
+          auto res = regex_search(current_code, smatch, r);
+          ABI_ASSERT( res );
+          auto table_name = smatch[1].str();
+          auto itor = std::find(target_macro_info_param_ptr->macro_tables.begin(),target_macro_info_param_ptr->macro_tables.end(),table_name);
+          if(qt.getAsString().find(table_name)!=std::string::npos && itor!= (target_macro_info_param_ptr->macro_tables.end())){
+              auto str = add_struct(qt, table_name, 0);
+              const auto *s_def = find_struct(table_name);
+              ABI_ASSERT(s_def, "Unable to find type ${type}", ("type",table_name));
+              table_def table;
+              table.name = boost::algorithm::to_lower_copy(boost::erase_all_copy(table_name, "_"));
+              table.type = table_name;
+              table.index_type = "i64";
+              guess_key_names(table, *s_def);
+              const auto* ta = find_table(table.name);
+              if(!ta) {
+                  output->tables.push_back(table);
+              }
+          }
+      }
+  }
+
   // Only process declarations that has the `abi_context` folder as parent.
   SourceManager& source_manager = ast_context->getSourceManager();
-  auto file_name = source_manager.getFilename(decl->getLocStart());
-  if ( !abi_context.empty() && !file_name.startswith(abi_context) ) {
+  auto file_name = source_manager.getFilename(decl->getLocation());//decl->getLocStart());
+  if ( !abi_context.empty() && !file_name.startswith(abi_context) && !isClass ) {
     return;
   }
 
@@ -206,28 +243,6 @@ void abi_generator::handle_decl(const Decl* decl) { try {
   // The current Decl doesn't have actions
   const RawComment* raw_comment = ast_context->getRawCommentForDeclNoCache(decl);
   if(raw_comment == nullptr) {
-
-    for(auto i : target_macro_info_param_ptr->macro_tables){
-      const auto* action_decl = dyn_cast<CXXRecordDecl>(decl);
-      ABI_ASSERT(action_decl != nullptr);
-      auto qt = action_decl->getTypeForDecl()->getCanonicalTypeInternal();
-      std::string type_name = "mytable";
-      const auto* s = find_struct(type_name);
-      if(!s){
-          add_struct(qt, type_name, 0);
-          s = find_struct(type_name);
-          ABI_ASSERT(s, "Unable to find type ${type}", ("type",type_name));
-      }
-      table_def table;
-      table.name = boost::algorithm::to_lower_copy(boost::erase_all_copy(type_name, "_"));
-      table.type = type_name;
-      table.index_type = "i64";
-      guess_key_names(table, *s);
-      const auto* ta = find_table(table.name);
-      if(!ta) {
-          output->tables.push_back(table);
-      }
-    }
     return;
   }
 

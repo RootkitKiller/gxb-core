@@ -60,11 +60,12 @@ namespace graphene {
       )
 
     struct macro_info {
-        std::vector<string> macro_actions; // macro ACTION list
-        std::vector<string> macro_tables;  // macro TABLE list
-        bool isfoundABImacro = false;      // is found GRAPHENERA_ABI(.....)
-        std::string source_path;           // source path
-        std::string contract_name;         // contract name
+        std::vector<string> macro_actions;  // macro ACTION list
+        std::vector<string> macro_payables; // macro PAYABLE list
+        std::vector<string> macro_tables;   // macro TABLE list
+        bool isfoundABImacro = false;       // is found GRAPHENERA_ABI(.....)
+        std::string source_path;            // source path
+        std::string contract_name;          // contract name
     };
    /**
      * @brief Generates eosio::abi_def struct handling events from ASTConsumer
@@ -281,42 +282,40 @@ namespace graphene {
                   return;
                }
                act.macro_info_param.source_path = file_name.str();
+
+               // add ACTION PAYABLE TABLE CONTRACT handle
                clang::SourceLocation start(range.getBegin());
                std::string na=id->getName().str();
-               if(na == "ACTION"){
-                   auto macro_action = string(sm.getCharacterData(start), 20);
-                   regex r(R"(ACTION\s*([a-z1-5]*))");
+               auto macro_buffer = string(sm.getCharacterData(start));
+               auto filling_macro_info = [&](std::string macro_name,regex& r,std::vector<std::string>& lists){
                    smatch smatch;
-                   auto res = regex_search(macro_action, smatch, r);
+                   auto res = regex_search(macro_buffer, smatch, r);
                    ABI_ASSERT( res );
-                   act.macro_info_param.macro_actions.push_back(smatch[1].str());
+                   auto smatch_name = remove_namespace(smatch[1].str());
+                   if(std::find(lists.begin(),lists.end(),smatch_name)==lists.end())
+                    lists.push_back(smatch_name);
+               };
+               if(na == "ACTION"){
+                   regex r(R"(ACTION\s*([a-z0-9\:]*)\W)");
+                   filling_macro_info(na,r,act.macro_info_param.macro_actions);
                    return ;
                }
                else if(na == "PAYABLE"){
-                   auto macro_table = string(sm.getCharacterData(start), 20);
-                   regex r(R"(PAYABLE\s*([a-zA-Z0-9]*)\s)");
-                   smatch smatch;
-                   auto res = regex_search(macro_table, smatch, r);
-                   ABI_ASSERT( res );
-                   act.contract = remove_namespace(smatch[1].str());
-                   return ;
-               }
-               else if(na == "CONTRACT"){
-                   auto macro_table = string(sm.getCharacterData(start), 20);
-                   regex r(R"(CONTRACT\s*([a-zA-Z0-9]*)\s)");
-                   smatch smatch;
-                   auto res = regex_search(macro_table, smatch, r);
-                   ABI_ASSERT( res );
-                   act.contract = remove_namespace(smatch[1].str());
+                   regex r(R"(PAYABLE\s*([a-zA-Z0-9\:]*)\W)");
+                   filling_macro_info(na,r,act.macro_info_param.macro_payables);
                    return ;
                }
                else if(na == "TABLE"){
-                   auto macro_table = string(sm.getCharacterData(start), 20);
-                   regex r(R"(TABLE\s*([a-z0-9]*)\s)");
+                   regex r(R"(TABLE\s*([a-z0-9\:]*)\W)");
+                   filling_macro_info(na,r,act.macro_info_param.macro_tables);
+                   return ;
+               }
+               else if(na == "CONTRACT"){
+                   regex r(R"(CONTRACT\s*([a-zA-Z0-9\:]*)\W)");
                    smatch smatch;
-                   auto res = regex_search(macro_table, smatch, r);
+                   auto res = regex_search(macro_buffer, smatch, r);
                    ABI_ASSERT( res );
-                   act.macro_info_param.macro_tables.push_back(smatch[1].str());
+                   act.macro_info_param.contract_name = remove_namespace(smatch[1].str());
                    return ;
                }
                if( id->getName() != "GRAPHENE_ABI" ) return;

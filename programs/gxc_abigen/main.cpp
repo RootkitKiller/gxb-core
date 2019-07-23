@@ -125,6 +125,7 @@ int main(int argc, const char **argv)
             for(auto i:macro_info_param.macro_actions) {
                 std::cout << i << " ";
             }
+            std::cout<<std::endl;
             std::cout<<macro_info_param.source_path<<std::endl;
             //todo write to file GRAPHENERA_ABI((contract_name),(macro_actions).....) to source_path
         }

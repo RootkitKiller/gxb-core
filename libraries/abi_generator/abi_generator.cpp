@@ -117,18 +117,20 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
       payable = payable_smatch.size() == 3;
     }
     // Check if current method is listed the ACTION macro
+    bool is_action_from_mlist = rec_decl->getName().str() == target_macro_info_param_ptr->contract_name && std::find(target_macro_info_param_ptr->macro_actions.begin(), target_macro_info_param_ptr->macro_actions.end(), method_name) != target_macro_info_param_ptr->macro_actions.end();
+    // Check if current method is listed the PAYABLE macro
+    bool is_payable_from_mlist = rec_decl->getName().str() == target_macro_info_param_ptr->contract_name && std::find(target_macro_info_param_ptr->macro_payables.begin(), target_macro_info_param_ptr->macro_payables.end(), method_name) != target_macro_info_param_ptr->macro_payables.end();
 
-    bool is_action_from_mlist = rec_decl->getName().str() == target_contract && std::find(target_macro_info_param_ptr->macro_actions.begin(), target_macro_info_param_ptr->macro_actions.end(), method_name) != target_macro_info_param_ptr->macro_actions.end();
-
-    // Check if current method is listed the GRAPHENE_ABI macro
+      // Check if current method is listed the GRAPHENE_ABI macro
     bool is_action_from_macro = rec_decl->getName().str() == target_contract && std::find(target_actions.begin(), target_actions.end(), method_name) != target_actions.end();
     
-    if(!raw_comment_is_action && !is_action_from_macro &&!is_action_from_mlist) {
+    if(!raw_comment_is_action && !is_action_from_macro &&!is_action_from_mlist && !is_payable_from_mlist) {
       return;
     }
 
     ABI_ASSERT(find_struct(method_name) == nullptr, "action already exists ${method_name}", ("method_name",method_name));
-    target_macro_info_param_ptr->contract_name = rec_decl->getName().str();
+    //if(find_struct(method_name) != nullptr)
+      //return;
     struct_def abi_struct;
     for(const auto* p : method->parameters() ) {
       clang::QualType qt = p->getOriginalType().getNonReferenceType();
@@ -192,20 +194,34 @@ void abi_generator::handle_decl(const Decl* decl) { try {
   ABI_ASSERT(output != nullptr);
   ABI_ASSERT(ast_context != nullptr);
 
-  SourceManager &sm = ast_context->getSourceManager();
-  auto loc = decl->getLocation();
-  auto pair = sm.getDecomposedLoc(loc);
-  auto code_buff = sm.getBuffer(pair.first)->getBuffer().str();
-  std::string current_code;
-  auto table_decl = dyn_cast<CXXRecordDecl>(decl);
-  bool isClass = false;
-  if(code_buff.size()>pair.second && table_decl != nullptr) {
-      current_code = code_buff.substr(pair.second, code_buff.size()-pair.second);
+  // Only process declarations that has the `abi_context` folder as parent.
+  SourceManager& source_manager = ast_context->getSourceManager();
+  auto file_name = source_manager.getFilename(decl->getLocation());
+  if ( !abi_context.empty() && !file_name.startswith(abi_context) ) {
+    return;
+  }
+
+  auto pair = ast_context->getSourceManager().getDecomposedLoc(decl->getLocation());
+  auto code_buff = ast_context->getSourceManager().getBuffer(pair.first)->getBuffer().str();
+  if(target_macro_info_param_ptr->contract_name == ""){
+    // if not found CONTRACT macro , use class **** public : contract regex to search
+    regex r(R"(class\s*([a-z0-9]*)\s*\:\s*public)");
+    smatch smatch;
+    auto res = regex_search(code_buff, smatch, r);
+    ABI_ASSERT( res );
+    target_macro_info_param_ptr->contract_name = remove_namespace(smatch[1].str());
+  }
+  // add ACTION PAYABLE macro
+  // Check if the current declaration has actions (GRAPHENE_ABI, or explicit)
+  bool type_has_actions = inspect_type_methods_for_actions(decl);
+  if( type_has_actions ) return;
+  // if found TABLE macro , then add table struct
+  if(code_buff.size()>pair.second && dyn_cast<CXXRecordDecl>(decl) != nullptr) {
+      auto table_decl = dyn_cast<CXXRecordDecl>(decl);
+      std::string current_code = code_buff.substr(pair.second, code_buff.size()-pair.second);
       auto qt = table_decl->getTypeForDecl()->getCanonicalTypeInternal();
-      if(qt.getAsString().find("class")!=std::string::npos && qt.getAsString().find("graphene")!=std::string::npos){
-          isClass = true;
-      }
-      if(qt.getAsString().find("struct")!=std::string::npos && qt.getAsString().find("helloworld")!=std::string::npos) {
+      static std::string currentclass = "";
+      if(qt.getAsString().find("struct")!=std::string::npos && qt.getAsString().find(currentclass)!=std::string::npos) {
           regex r(R"(([a-z0-9]*)\s)");
           smatch smatch;
           auto res = regex_search(current_code, smatch, r);
@@ -225,21 +241,10 @@ void abi_generator::handle_decl(const Decl* decl) { try {
               if(!ta) {
                   output->tables.push_back(table);
               }
+              return;
           }
       }
   }
-
-  // Only process declarations that has the `abi_context` folder as parent.
-  SourceManager& source_manager = ast_context->getSourceManager();
-  auto file_name = source_manager.getFilename(decl->getLocation());//decl->getLocStart());
-  if ( !abi_context.empty() && !file_name.startswith(abi_context) && !isClass ) {
-    return;
-  }
-
-  // Check if the current declaration has actions (GRAPHENE_ABI, or explicit)
-  bool type_has_actions = inspect_type_methods_for_actions(decl);
-  if( type_has_actions ) return;
-
   // The current Decl doesn't have actions
   const RawComment* raw_comment = ast_context->getRawCommentForDeclNoCache(decl);
   if(raw_comment == nullptr) {

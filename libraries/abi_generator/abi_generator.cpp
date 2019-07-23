@@ -120,8 +120,10 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
     bool is_action_from_mlist = rec_decl->getName().str() == target_macro_info_param_ptr->contract_name && std::find(target_macro_info_param_ptr->macro_actions.begin(), target_macro_info_param_ptr->macro_actions.end(), method_name) != target_macro_info_param_ptr->macro_actions.end();
     // Check if current method is listed the PAYABLE macro
     bool is_payable_from_mlist = rec_decl->getName().str() == target_macro_info_param_ptr->contract_name && std::find(target_macro_info_param_ptr->macro_payables.begin(), target_macro_info_param_ptr->macro_payables.end(), method_name) != target_macro_info_param_ptr->macro_payables.end();
+    if(is_payable_from_mlist)
+        payable = true;
 
-      // Check if current method is listed the GRAPHENE_ABI macro
+    // Check if current method is listed the GRAPHENE_ABI macro
     bool is_action_from_macro = rec_decl->getName().str() == target_contract && std::find(target_actions.begin(), target_actions.end(), method_name) != target_actions.end();
     
     if(!raw_comment_is_action && !is_action_from_macro &&!is_action_from_mlist && !is_payable_from_mlist) {
@@ -129,8 +131,7 @@ bool abi_generator::inspect_type_methods_for_actions(const Decl* decl) { try {
     }
 
     ABI_ASSERT(find_struct(method_name) == nullptr, "action already exists ${method_name}", ("method_name",method_name));
-    //if(find_struct(method_name) != nullptr)
-      //return;
+
     struct_def abi_struct;
     for(const auto* p : method->parameters() ) {
       clang::QualType qt = p->getOriginalType().getNonReferenceType();
@@ -215,13 +216,13 @@ void abi_generator::handle_decl(const Decl* decl) { try {
   // Check if the current declaration has actions (GRAPHENE_ABI, or explicit)
   bool type_has_actions = inspect_type_methods_for_actions(decl);
   if( type_has_actions ) return;
+
   // if found TABLE macro , then add table struct
   if(code_buff.size()>pair.second && dyn_cast<CXXRecordDecl>(decl) != nullptr) {
       auto table_decl = dyn_cast<CXXRecordDecl>(decl);
       std::string current_code = code_buff.substr(pair.second, code_buff.size()-pair.second);
       auto qt = table_decl->getTypeForDecl()->getCanonicalTypeInternal();
-      static std::string currentclass = "";
-      if(qt.getAsString().find("struct")!=std::string::npos && qt.getAsString().find(currentclass)!=std::string::npos) {
+      if(qt.getAsString().find("struct")!=std::string::npos && qt.getAsString().find(target_macro_info_param_ptr->contract_name)!=std::string::npos) {
           regex r(R"(([a-z0-9]*)\s)");
           smatch smatch;
           auto res = regex_search(current_code, smatch, r);
@@ -751,27 +752,21 @@ string abi_generator::add_struct(const clang::QualType& sqt, string full_name, s
     return name;
   }
 
+  auto bases = get_struct_bases(qt);
+  auto bitr = bases.begin();
+  int total_bases = 0;
+
   string base_name;
-
-  //if( full_name.find( "mytable" ) != std::string::npos ){
-    //base_name = "";
-  //}else {
-    auto bases = get_struct_bases(qt);
-    auto bitr = bases.begin();
-    int total_bases = 0;
-
-
-    while (bitr != bases.end()) {
-      auto base_qt = bitr->getType();
-      const auto *record_type = base_qt->getAs<clang::RecordType>();
-      if (record_type && is_struct(base_qt) && !record_type->getDecl()->field_empty()) {
-        ABI_ASSERT(total_bases == 0, "Multiple inheritance not supported - ${type}", ("type", full_name));
-        base_name = add_type(base_qt, recursion_depth);
-        ++total_bases;
-      }
-      ++bitr;
+  while (bitr != bases.end() ) {
+    auto base_qt = bitr->getType();
+    const auto *record_type = base_qt->getAs<clang::RecordType>();
+    if (record_type && is_struct(base_qt) && !record_type->getDecl()->field_empty()) {
+      ABI_ASSERT(total_bases == 0, "Multiple inheritance not supported - ${type}", ("type", full_name));
+      base_name = add_type(base_qt, recursion_depth);
+      ++total_bases;
     }
-  //}
+    ++bitr;
+  }
 
   struct_def abi_struct;
   for (const clang::FieldDecl* field : get_struct_fields(qt) ) {
